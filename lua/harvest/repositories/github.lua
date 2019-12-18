@@ -46,5 +46,4 @@ github.get_plugin_definition = function(dependency)
   return ret() or {}
 end
 
-
 return github

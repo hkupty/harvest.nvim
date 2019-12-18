@@ -31,6 +31,8 @@ async.call = function(ctx, cmd)
 
   return {
     name = folder_name,
+    _and_then = {},
+    _recover = {},
     _status = nil,
     status = function(this)
       if not this._status then
@@ -49,18 +51,37 @@ async.call = function(ctx, cmd)
       end
     end),
     and_then = function(this, new_cmd)
-      return async.and_then(ctx, this, new_cmd)
+      table.insert(this._and_then, new_cmd)
+      return this
     end,
     recover = function(this, new_cmd)
-      return async.recover(ctx, this, new_cmd)
+      table.insert(this._recover, new_cmd)
+      return this
     end,
+    apply_success = function(this)
+      local new = async.call(ctx, this._and_then[1])
+      for ix=2,#this._and_then do
+        new:and_then(this._and_then[ix])
+      end
+      -- TODO figure out
+      for ix=1,#this._recover do
+        new:recover(this._recover[ix])
+      end
     realize = function(this)
       while true do
         local alive, status = coroutine.resume(this.routine)
         if status == "0" or (not alive and this:status() == "0") then
-          return true
+          if this._and_then ~= nil then
+            return async.call(ctx, this._and_then):realize()
+          else
+            return true
+          end
         elseif alive and status == nil then
-          return nil
+          if this._recover ~= nil then
+            return async.call(ctx, this._recover):realize()
+          else
+            return nil
+          end
         end
       end
 
@@ -68,19 +89,6 @@ async.call = function(ctx, cmd)
   }
 end
 
-async.and_then = function(ctx, old, cmd)
-  if old:realize() then
-    return async.call(ctx, cmd)
-  end
-  return old
-end
-
-async.recover = function(ctx, old, cmd)
-  if not old:realize() then
-    return async.call(ctx, cmd)
-  end
-  return old
-end
 
 async.collect = function(coroutines)
   local returned = {}
